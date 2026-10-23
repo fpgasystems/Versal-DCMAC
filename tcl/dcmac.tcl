@@ -1422,8 +1422,6 @@ proc bd_dcmac { parentCell {dcmac_index 0} {dual_dcmac 0} {dcmac_axil 0} {board 
         append associated_busif ":S_AXIS_1:M_AXIS_1"
     }
     if { $dcmac_axil == 1 } {
-        # AXI4-Lite slave shares aclk/aresetn with the datapath — both Coyote
-        # and SLASH use a single user clock + reset at this boundary.
         append associated_busif ":s_axi"
     }
     set_property -dict [list \
@@ -1432,8 +1430,6 @@ proc bd_dcmac { parentCell {dcmac_index 0} {dual_dcmac 0} {dcmac_axil 0} {board 
         CONFIG.ASSOCIATED_RESET aresetn \
     ] $aclk
 
-    # AXI4-Lite top-level interface port (only when enabled). Clock and reset
-    # are shared with aclk/aresetn — no separate s_axi_aclk/s_axi_aresetn ports.
     if { $dcmac_axil == 1 } {
         set s_axi [_bnd_intf $inline -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 s_axi]
     }
@@ -1647,6 +1643,43 @@ proc bd_dcmac_qsfp { parentCell {dcmac_index 0} {dual_dcmac 0} {dcmac_axil 0} {b
     if { $rc != 0 } {
         current_bd_instance $oldCurInst
         return $rc
+    }
+
+    current_bd_instance [get_bd_cells ${qsfp_hier_name}]
+    set clk_free [create_bd_pin -dir I -type clk freerunning_clk]
+    current_bd_instance $parentObj
+
+    # Enter bd_clock_reset_ctrl: add input pin and rewire dcmac_reset_ctrl/sys_clk
+    current_bd_instance [get_bd_cells ${qsfp_hier_name}/bd_clock_reset_ctrl]
+    create_bd_pin -dir I -type clk freerunning_clk
+    disconnect_bd_net [get_bd_nets -of_objects [get_bd_pins dcmac_reset_ctrl/sys_clk]] \
+        [get_bd_pins dcmac_reset_ctrl/sys_clk]
+    connect_bd_net [get_bd_pins freerunning_clk] [get_bd_pins dcmac_reset_ctrl/sys_clk]
+    current_bd_instance $parentObj
+
+    # Wire top-level pin into bd_clock_reset_ctrl and replace sys_clk external sinks
+    connect_bd_net $clk_free [get_bd_pins ${qsfp_hier_name}/bd_clock_reset_ctrl/freerunning_clk]
+
+    disconnect_bd_net [get_bd_nets -of_objects [get_bd_pins ${qsfp_hier_name}/bd_clock_reset_ctrl/sys_clk]] \
+        [get_bd_pins ${qsfp_hier_name}/bd_clock_reset_ctrl/sys_clk] \
+        [get_bd_pins ${qsfp_hier_name}/dcmac_wrapper/ts_axil_clk] \
+        [get_bd_pins ${qsfp_hier_name}/gt_wrapper/gtwiz_freerun_clk]
+    delete_bd_objs [get_bd_pins ${qsfp_hier_name}/bd_clock_reset_ctrl/sys_clk]
+    set_property CONFIG.CLKOUT_USED {true,true,false,false,false,false,false} \
+        [get_bd_cells ${qsfp_hier_name}/bd_clock_reset_ctrl/clk_wizard_dcmac]
+
+    connect_bd_net $clk_free \
+        [get_bd_pins ${qsfp_hier_name}/dcmac_wrapper/ts_axil_clk] \
+        [get_bd_pins ${qsfp_hier_name}/gt_wrapper/gtwiz_freerun_clk]
+
+    if { $dcmac_axil == 1 } {
+        set s_axi_aclk_net [get_bd_nets -of_objects [get_bd_pins ${qsfp_hier_name}/dcmac_wrapper/s_axi_aclk]]
+        disconnect_bd_net $s_axi_aclk_net \
+            [get_bd_pins ${qsfp_hier_name}/dcmac_wrapper/s_axi_aclk] \
+            [get_bd_pins ${qsfp_hier_name}/s_axi_smartconnect/aclk]
+        connect_bd_net $clk_free \
+            [get_bd_pins ${qsfp_hier_name}/dcmac_wrapper/s_axi_aclk] \
+            [get_bd_pins ${qsfp_hier_name}/s_axi_smartconnect/aclk]
     }
 
     # Boundary pin names (S_AXIS_<idx>, M_AXIS_<idx>, qsfp_gt_clk, qsfp_gt0/1)

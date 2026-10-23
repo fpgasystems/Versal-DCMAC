@@ -58,6 +58,19 @@ Used by:
 
 Reset process is controlled by the HDL module [dcmac_reset_ctrl_wrapper.v](hdl/dcmac_reset_ctrl_wrapper.v).
 
+### Free-running clock for reconfigurable regions
+
+The reset FSM and the GT `gtwiz_freerun_clk` need a stable `sys_clk`. By default
+it is derived from the GT reference clock, which disappears during
+reconfiguration of a reconfigurable region.
+
+For reconfigurable regions use the wrapped-QSFP flow (`bd_dcmac_qsfp`), which
+exposes an external `freerunning_clk` input. This clock must be **100 MHz**,
+sourced from outside the reconfigurable region and stable during reconfiguration.
+It drives `sys_clk` and, when `dcmac_axil=1`, it drives the AXI4-Lite path.
+The flat `bd_dcmac` flow keeps the GT-derived `sys_clk` and routes the
+AXI4-Lite path through `aclk`.
+
 ### Set swing and pre/post-emphasis
 
 To be able to transmit, we need to set the corresponding `CH*_TXMAINCURSOR`, `CH*_TXPRECURSOR` and `CH*_TXPOSTCURSOR`. In general these parameters will depend on the board path from the transceiver pins to the QSFP cases.

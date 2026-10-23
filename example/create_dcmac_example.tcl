@@ -86,14 +86,16 @@ set bd_file [get_files "${design_name}.bd"]
 
 # bd_dcmac / bd_dcmac_qsfp end with close_bd_design; re-open to externalize qsfp
 # pins (wrap_qsfp flow only). validate_bd_design is intentionally NOT called: the
-# clock chain has a latent FREQ_HZ mismatch (clk_wizard_dcmac/clk_in1=322265625
-# vs bufgt_dcmac/usrclk=100000000 propagated default) that has been silently
-# tolerated since the original Coyote BD. See dcmac_coyote/TODO.md.
+# FREQ_HZ on the promoted qsfp_gt_clk_0 port must be set after make_bd_intf_pins_external
+# for Vivado to propagate it correctly into the GT clock chain.
 if { $wrap_qsfp == 1 } {
     open_bd_design $bd_file
     set hier_name [get_bd_cells]
     make_bd_pins_external       [get_bd_cells ${hier_name}]
     make_bd_intf_pins_external  [get_bd_cells ${hier_name}]
+    set_property CONFIG.FREQ_HZ 322265625 [get_bd_intf_ports -filter {VLNV =~ "*diff_clock*"}]
+    set_property CONFIG.FREQ_HZ 100000000 [get_bd_ports -filter {NAME =~ "freerunning_clk*"}]
+    set_property CONFIG.FREQ_HZ [expr {$nclk_f * 1000000}] [get_bd_ports -filter {NAME =~ "aclk*"}]
     save_bd_design
     close_bd_design $design_name
 }
