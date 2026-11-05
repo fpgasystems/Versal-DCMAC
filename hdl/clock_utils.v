@@ -45,6 +45,28 @@ module clk_to_alt_serdes_clk (
 
 endmodule
 
+// Two 200GAUI-4 ports: port 0 (serdes clock bits [1:0]) on the first GT quad,
+// port 2 (bits [3:2]) on the second. Each port runs from its own quad's clocks.
+module clk_to_serdes_clk_dual (
+	(* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK" *) input  clk,
+	(* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk_1 CLK" *) input  clk_1,
+    (* X_INTERFACE_INFO = "xilinx.com:signal:gt_usrclk:1.0 serdes_clk CLK" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME serdes_clk, FREQ_HZ 664062000, PARENT_ID undef, PHASE 0.0" *) output wire [5:0] serdes_clk
+);
+
+    assign serdes_clk = {1'b0, 1'b0, clk_1, clk_1, clk, clk};
+
+endmodule
+
+module clk_to_alt_serdes_clk_dual (
+	(* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK" *) input  clk,
+	(* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk_1 CLK" *) input  clk_1,
+    (* X_INTERFACE_INFO = "xilinx.com:signal:gt_usrclk:1.0 serdes_clk CLK" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME serdes_clk, FREQ_HZ 332031000, PARENT_ID undef, PHASE 0.0" *) output wire [5:0] serdes_clk
+);
+
+    assign serdes_clk = {1'b0, 1'b0, clk_1, clk_1, clk, clk};
+
+endmodule
+
 module clk_to_ts_clk (
 	(* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK" *) input  clk,
     (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 ts_clk CLK" *) (* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME ts_clk, FREQ_HZ 100000000" *) output wire [5:0] ts_clk

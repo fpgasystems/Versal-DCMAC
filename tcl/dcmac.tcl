@@ -507,6 +507,13 @@ proc create_hier_cell_dcmac_wrapper { parentCell nameHier {dcmac_index 0} {dual_
   create_bd_pin -dir I -type gt_usrclk tx_clk_alt
   create_bd_pin -dir I -type gt_usrclk rx_clk
   create_bd_pin -dir I rx_clk_alt
+  # Port 2 runs from the second quad's own clocks
+  if { ${dual_dcmac} == "1" } {
+    create_bd_pin -dir I tx_clk_1
+    create_bd_pin -dir I -type gt_usrclk tx_clk_alt_1
+    create_bd_pin -dir I -type gt_usrclk rx_clk_1
+    create_bd_pin -dir I rx_clk_alt_1
+  }
   create_bd_pin -dir I -type clk core_clk
   set axis_clk_pin [create_bd_pin -dir I -type clk axis_clk]
   create_bd_pin -dir I -type rst axis_tx_resetn
@@ -632,7 +639,7 @@ proc create_hier_cell_dcmac_wrapper { parentCell nameHier {dcmac_index 0} {dual_
    }
 
   # Create instance: alt_serdes_clk_tx, and set properties
-  set block_name clk_to_alt_serdes_clk
+  set block_name clk_to_alt_serdes_clk[expr {${dual_dcmac} == "1" ? "_dual" : ""}]
   set block_cell_name alt_serdes_clk_tx
   if { [catch {set alt_serdes_clk_tx [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
@@ -643,7 +650,7 @@ proc create_hier_cell_dcmac_wrapper { parentCell nameHier {dcmac_index 0} {dual_
    }
 
   # Create instance: serdes_clk_tx, and set properties
-  set block_name clk_to_serdes_clk
+  set block_name clk_to_serdes_clk[expr {${dual_dcmac} == "1" ? "_dual" : ""}]
   set block_cell_name serdes_clk_tx
   if { [catch {set serdes_clk_tx [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
@@ -665,7 +672,7 @@ proc create_hier_cell_dcmac_wrapper { parentCell nameHier {dcmac_index 0} {dual_
    }
 
   # Create instance: alt_serdes_clk_rx, and set properties
-  set block_name clk_to_alt_serdes_clk
+  set block_name clk_to_alt_serdes_clk[expr {${dual_dcmac} == "1" ? "_dual" : ""}]
   set block_cell_name alt_serdes_clk_rx
   if { [catch {set alt_serdes_clk_rx [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
@@ -687,7 +694,7 @@ proc create_hier_cell_dcmac_wrapper { parentCell nameHier {dcmac_index 0} {dual_
    }
 
   # Create instance: serdes_clk_rx, and set properties
-  set block_name clk_to_serdes_clk
+  set block_name clk_to_serdes_clk[expr {${dual_dcmac} == "1" ? "_dual" : ""}]
   set block_cell_name serdes_clk_rx
   if { [catch {set serdes_clk_rx [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
@@ -879,6 +886,12 @@ proc create_hier_cell_dcmac_wrapper { parentCell nameHier {dcmac_index 0} {dual_
       connect_bd_net [get_bd_pins $dcmac_name/rx_axis_tuser_mty${dcmac_lane}]  [get_bd_pins seg_to_axis_1/Seg2UnSegMty${lane}_in]
       connect_bd_net [get_bd_pins $dcmac_name/rx_axis_tuser_sop${dcmac_lane}]  [get_bd_pins seg_to_axis_1/Seg2UnSegSop${lane}_in]
     }
+
+    # Serdes clocks of port 2: second quad (AMD's example design for 2x200G does the same)
+    connect_bd_net [get_bd_pins rx_clk_1]     [get_bd_pins serdes_clk_rx/clk_1]
+    connect_bd_net [get_bd_pins rx_clk_alt_1] [get_bd_pins alt_serdes_clk_rx/clk_1]
+    connect_bd_net [get_bd_pins tx_clk_1]     [get_bd_pins serdes_clk_tx/clk_1]
+    connect_bd_net [get_bd_pins tx_clk_alt_1] [get_bd_pins alt_serdes_clk_tx/clk_1]
 
     # Per-port valid/ready (AXIS port index 2)
     connect_bd_net [get_bd_pins axis_to_seg_1/tx_valid]         [get_bd_pins $dcmac_name/tx_axis_tvalid_2]
@@ -1121,8 +1134,8 @@ proc create_hier_cell_gt_wrapper { parentCell nameHier {dual_dcmac 0} } {
   #
   # Per-quad MBUFG_GT pairs are required even with shared refclk — each quad
   # has its own PLL/CDR producing its own user clocks. QUAD1's user clocks
-  # stay internal to this hier (the boundary tx_clk/rx_clk/*_alt continue to
-  # come from QUAD0 only — DCMAC core uses one set of serdes_clk inputs).
+  # leave this hier as tx_clk_1/rx_clk_1/*_alt_1 and drive the serdes clocks
+  # of DCMAC port 2.
   #
   # Reset-done aggregation: AND the per-quad done signals before exposing on
   # the boundary so dcmac_reset_ctrl waits for both quads.
@@ -1243,8 +1256,13 @@ proc create_hier_cell_gt_wrapper { parentCell nameHier {dual_dcmac 0} } {
     connect_bd_net -net gtwiz_versal_1_INTF0_RX2_ch_rxdata [get_bd_pins gtwiz_versal_1/INTF0_RX2_ch_rxdata] [get_bd_pins rx_data_6]
     connect_bd_net -net gtwiz_versal_1_INTF0_RX3_ch_rxdata [get_bd_pins gtwiz_versal_1/INTF0_RX3_ch_rxdata] [get_bd_pins rx_data_7]
 
-    # Per-quad MBUFG wiring (mirrors the QUAD0/MBUFG pattern; usrclks stay
-    # internal — no boundary export for QUAD1).
+    # Per-quad MBUFG wiring (mirrors the QUAD0/MBUFG pattern).
+    create_bd_pin -dir O -from 0 -to 0 -type gt_usrclk tx_clk_1
+    create_bd_pin -dir O -from 0 -to 0 -type gt_usrclk tx_clk_alt_1
+    create_bd_pin -dir O -from 0 -to 0 -type gt_usrclk rx_clk_1
+    create_bd_pin -dir O -from 0 -to 0 -type gt_usrclk rx_clk_alt_1
+    connect_bd_net -net mbufg_rx_1_MBUFG_GT_O1 [get_bd_pins mbufg_rx_1/MBUFG_GT_O1] [get_bd_pins rx_clk_1]
+    connect_bd_net -net mbufg_tx_1_MBUFG_GT_O1 [get_bd_pins mbufg_tx_1/MBUFG_GT_O1] [get_bd_pins tx_clk_1]
     connect_bd_net -net gtwiz_versal_1_INTF0_RX_clr_out       [get_bd_pins gtwiz_versal_1/INTF0_RX_clr_out]       [get_bd_pins mbufg_rx_1/MBUFG_GT_CLR]
     connect_bd_net -net gtwiz_versal_1_INTF0_RX_clrb_leaf_out [get_bd_pins gtwiz_versal_1/INTF0_RX_clrb_leaf_out] [get_bd_pins mbufg_rx_1/MBUFG_GT_CLRB_LEAF]
     connect_bd_net -net gtwiz_versal_1_INTF0_TX_clr_out       [get_bd_pins gtwiz_versal_1/INTF0_TX_clr_out]       [get_bd_pins mbufg_tx_1/MBUFG_GT_CLR]
@@ -1255,12 +1273,14 @@ proc create_hier_cell_gt_wrapper { parentCell nameHier {dual_dcmac 0} } {
       [get_bd_pins gtwiz_versal_1/QUAD0_RX0_usrclk] \
       [get_bd_pins gtwiz_versal_1/QUAD0_RX1_usrclk] \
       [get_bd_pins gtwiz_versal_1/QUAD0_RX2_usrclk] \
-      [get_bd_pins gtwiz_versal_1/QUAD0_RX3_usrclk]
+      [get_bd_pins gtwiz_versal_1/QUAD0_RX3_usrclk] \
+      [get_bd_pins rx_clk_alt_1]
     connect_bd_net -net mbufg_tx_1_MBUFG_GT_O2 [get_bd_pins mbufg_tx_1/MBUFG_GT_O2] \
       [get_bd_pins gtwiz_versal_1/QUAD0_TX0_usrclk] \
       [get_bd_pins gtwiz_versal_1/QUAD0_TX1_usrclk] \
       [get_bd_pins gtwiz_versal_1/QUAD0_TX2_usrclk] \
-      [get_bd_pins gtwiz_versal_1/QUAD0_TX3_usrclk]
+      [get_bd_pins gtwiz_versal_1/QUAD0_TX3_usrclk] \
+      [get_bd_pins tx_clk_alt_1]
 
     # Reset-done aggregation: AND the per-quad done signals onto the boundary.
     connect_bd_net -net gtwiz_versal_0_INTF0_rst_rx_done_out [get_bd_pins gtwiz_versal_0/INTF0_rst_rx_done_out]   [get_bd_pins and_rst_rx_done/Op1]
@@ -1548,6 +1568,11 @@ proc bd_dcmac { parentCell {dcmac_index 0} {dual_dcmac 0} {dcmac_axil 0} {board 
     connect_bd_net [get_bd_pins gt_wrapper/tx_clk] [get_bd_pins dcmac_wrapper/tx_clk]
     connect_bd_net [get_bd_pins gt_wrapper/rx_clk_alt] [get_bd_pins dcmac_wrapper/rx_clk_alt]
     connect_bd_net [get_bd_pins gt_wrapper/tx_clk_alt] [get_bd_pins dcmac_wrapper/tx_clk_alt]
+    if { $dual_dcmac == 1 } {
+        foreach pin {rx_clk_1 tx_clk_1 rx_clk_alt_1 tx_clk_alt_1} {
+            connect_bd_net [get_bd_pins gt_wrapper/$pin] [get_bd_pins dcmac_wrapper/$pin]
+        }
+    }
     connect_bd_net [get_bd_pins bd_clock_reset_ctrl/dcmac_core_clk] [get_bd_pins dcmac_wrapper/core_clk]
     connect_bd_net [get_bd_pins bd_clock_reset_ctrl/sys_clk] [get_bd_pins dcmac_wrapper/ts_axil_clk] [get_bd_pins gt_wrapper/gtwiz_freerun_clk]
 

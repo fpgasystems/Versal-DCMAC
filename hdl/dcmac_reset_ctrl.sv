@@ -35,7 +35,15 @@
 /// Input reset:
 ///   async_resetn   - Active-low reset from the shell, needs to be synchronized to sys_clk
 ///
-module dcmac_reset_ctrl (
+module dcmac_reset_ctrl #(
+    // Ports whose serdes reset and channel flush are released. Port 0 only
+    // (200GAUI-4 on bits [1:0]) by default; 15 for two 200GAUI-4 ports.
+    parameter integer ACTIVE_PORTS   = 3,
+    // 0: wait for GT reset done forever. Otherwise give up after this many
+    // sys_clk cycles: a quad without a signal may not finish its RX reset, and
+    // must not keep the other port of this DCMAC down.
+    parameter integer GT_WAIT_CYCLES = 0
+) (
     // Input clocks, reset
     input  logic        sys_clk,
     input  logic        dcmac_core_clk,
@@ -62,6 +70,8 @@ module dcmac_reset_ctrl (
 );
 
 localparam integer LONG_WAIT_CYCLES = 6_000_000;
+// Held in reset and flush for good: the ports not in use
+localparam logic [5:0] IDLE_PORTS = ~6'(ACTIVE_PORTS);
 
 // FSM
 typedef enum logic [4:0] {
@@ -163,9 +173,12 @@ always_ff @(posedge sys_clk) begin
 
             // Wait for GT internal reset handshake to complete
             ST_WAIT_GT_RST: begin
-                if (gt_reset_done_tx_r && gt_reset_done_rx_r) begin
+                if ((gt_reset_done_tx_r && gt_reset_done_rx_r) ||
+                    (GT_WAIT_CYCLES != 0 && clk_cnt == GT_WAIT_CYCLES)) begin
                     clk_cnt <= 32'b0;
                     rst_state <= ST_WAIT_INT_1;
+                end else begin
+                    clk_cnt <= clk_cnt + 1;
                 end
             end
 
@@ -192,7 +205,7 @@ always_ff @(posedge sys_clk) begin
             ST_RST_DCMAC_TX_WAIT_1: begin
                 if (clk_cnt == 32'd63) begin
                     clk_cnt <= 32'b0;
-                    tx_serdes_reset_src <= 6'b111100;
+                    tx_serdes_reset_src <= IDLE_PORTS;
                     rst_state <= ST_RST_DCMAC_TX_WAIT_2;
                 end else begin
                     clk_cnt <= clk_cnt + 1;
@@ -214,7 +227,7 @@ always_ff @(posedge sys_clk) begin
             ST_RST_DCMAC_TX_WAIT_3: begin
                 if (clk_cnt == LONG_WAIT_CYCLES) begin
                     clk_cnt <= 32'b0;
-                    tx_chan_flush_src <= 6'b111100;
+                    tx_chan_flush_src <= IDLE_PORTS;
                     rst_state <= ST_WAIT_INT_2;
                 end else begin
                     clk_cnt <= clk_cnt + 1;
@@ -255,7 +268,7 @@ always_ff @(posedge sys_clk) begin
             ST_RST_DCMAC_RX_WAIT_2: begin
                 if (clk_cnt == 32'd63) begin
                     clk_cnt <= 32'b0;
-                    rx_chan_flush_src <= 6'b111100;
+                    rx_chan_flush_src <= IDLE_PORTS;
                     rst_state <= ST_RST_DCMAC_RX_WAIT_3;
                 end else begin
                     clk_cnt <= clk_cnt + 1;
@@ -267,7 +280,7 @@ always_ff @(posedge sys_clk) begin
             ST_RST_DCMAC_RX_WAIT_3: begin
                 if (clk_cnt == 32'd63) begin
                     clk_cnt <= 32'b0;
-                    rx_serdes_reset_src <= 6'b111100;
+                    rx_serdes_reset_src <= IDLE_PORTS;
                     axis_resetn_src <= 1'b1;
                     rst_state <= ST_DONE;
                 end else begin
@@ -282,11 +295,11 @@ always_ff @(posedge sys_clk) begin
             default: begin
                 gt_reset_src  <= 1'b0;
                 tx_core_reset_src <= 1'b0;
-                tx_chan_flush_src <= 6'b111100;
-                tx_serdes_reset_src <= 6'b111100;
+                tx_chan_flush_src <= IDLE_PORTS;
+                tx_serdes_reset_src <= IDLE_PORTS;
                 rx_core_reset_src <= 1'b0;
-                rx_chan_flush_src <= 6'b111100;
-                rx_serdes_reset_src <= 6'b111100;
+                rx_chan_flush_src <= IDLE_PORTS;
+                rx_serdes_reset_src <= IDLE_PORTS;
                 axis_resetn_src <= 1'b1;
                 clk_cnt <= 32'b0;
                 rst_state <= ST_DONE;
