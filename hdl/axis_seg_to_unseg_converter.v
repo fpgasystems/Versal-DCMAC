@@ -865,7 +865,7 @@ localparam max_pkt_burst_size_p2 = $ceil($clog2(`max_packet_size));
 `endif
 
 localparam in_buff_depth = pktarry_buff_depth/2;
-localparam out_buff_depth = pktarry_buff_depth*4;
+localparam out_buff_depth = pktarry_buff_depth*2;	// 512 beats: 18 RAMB36 per port, not 36; holds five 9 KB frames
 localparam out_buff_pfull_thresh = out_buff_depth - max_pkt_burst_size;
 
 //-----------------------------------------------------------------------------------------------------------------------
