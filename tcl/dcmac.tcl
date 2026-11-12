@@ -128,7 +128,7 @@ proc _bnd_pin { inline args } {
 ##################################################################
 
 # Hierarchical cell: bd_clock_reset_ctrl
-proc create_hier_cell_bd_clock_reset_ctrl { parentCell nameHier } {
+proc create_hier_cell_bd_clock_reset_ctrl { parentCell nameHier {dual_dcmac 0} } {
 
   variable script_folder
 
@@ -223,6 +223,18 @@ proc create_hier_cell_bd_clock_reset_ctrl { parentCell nameHier } {
      catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
      return 1
    }
+
+  # Dual QSFP: release the serdes resets and channel flushes of port 2 as well
+  # (ACTIVE_PORTS bit i = DCMAC serdes/channel i; a 200GAUI-4 port p takes
+  # channels p and p+1, so 0x3 is port 0, 0xF ports 0 and 2), and do not wait
+  # for ever on the GT reset done of both quads: an empty cage must not hold
+  # the other port down (0.5 s of the 100 MHz sys_clk).
+  if { ${dual_dcmac} == "1" } {
+    set_property -dict [list \
+      CONFIG.ACTIVE_PORTS {15} \
+      CONFIG.GT_WAIT_CYCLES {50000000} \
+    ] $dcmac_reset_ctrl
+  }
 
   # Create interface connections
   connect_bd_intf_net -intf_net Conn1 [get_bd_intf_pins diff_buff/CLK_IN_D1] [get_bd_intf_pins qsfp_gt_clk]
@@ -1471,7 +1483,7 @@ proc bd_dcmac { parentCell {dcmac_index 0} {dual_dcmac 0} {dcmac_axil 0} {board 
         create_hier_cell_datapath_tx [current_bd_instance .] ${datapath_tx_name_1} ${dcmac_index}
         create_hier_cell_datapath_rx [current_bd_instance .] ${datapath_rx_name_1} ${dcmac_index}
     }
-    create_hier_cell_bd_clock_reset_ctrl [current_bd_instance .] bd_clock_reset_ctrl
+    create_hier_cell_bd_clock_reset_ctrl [current_bd_instance .] bd_clock_reset_ctrl ${dual_dcmac}
 
     # Create interface connections (use handle variables so this works for
     # both port and pin boundaries — see _bnd_intf above).

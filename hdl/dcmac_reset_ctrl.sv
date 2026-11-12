@@ -36,8 +36,12 @@
 ///   async_resetn   - Active-low reset from the shell, needs to be synchronized to sys_clk
 ///
 module dcmac_reset_ctrl #(
-    // Ports whose serdes reset and channel flush are released. Port 0 only
-    // (200GAUI-4 on bits [1:0]) by default; 15 for two 200GAUI-4 ports.
+    // Mask of the DCMAC serdes / channels (bit i = tx/rx_serdes_reset[i] and
+    // tx/rx_chan_flush[i]) that the sequence releases; the others stay in
+    // reset and flush. A 200GAUI-4 port p occupies channels p and p+1:
+    //   3  (6'b000011): port 0 only, the single-QSFP default
+    //   15 (6'b001111): ports 0 and 2, dual QSFP (set by tcl/dcmac.tcl when
+    //                   dual_dcmac = 1)
     parameter integer ACTIVE_PORTS   = 3,
     // 0: wait for GT reset done forever. Otherwise give up after this many
     // sys_clk cycles: a quad without a signal may not finish its RX reset, and
