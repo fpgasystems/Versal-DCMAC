@@ -13,8 +13,7 @@ drives one QSFP56 cage; the package supports two instances on the same device
 (`DCMAC_X1Y1` and `DCMAC_X0Y2`) and an optional dual-QSFP56 mode that uses
 both GT quads of one DCMAC.
 
-Single-DCMAC is the tested configuration.
-**Dual-QSFP modes are experimental and have not been hardware-validated**, treat them as work-in-progress.
+Both single-DCMAC and dual-QSFP have been tested on the Alveo V80.
 
 ## Repository organization
 
